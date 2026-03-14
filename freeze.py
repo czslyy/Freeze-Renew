@@ -128,10 +128,32 @@ test('FreezeHost 自动续期', async () => {
         throw new Error('❌ 缺少 DISCORD_ACCOUNT，格式: email:password');
     }
 
+    // GOST_PROXY 固定为本地地址，需先确认 GOST 进程是否真正启动
+    // 方式：尝试连通本地代理，失败则降级为直连
+    let proxyConfig = undefined;
+    if (process.env.GOST_PROXY) {
+        try {
+            const http = require('http');
+            await new Promise((resolve, reject) => {
+                const req = http.request(
+                    { host: '127.0.0.1', port: 8080, path: '/', method: 'GET', timeout: 3000 },
+                    () => resolve()
+                );
+                req.on('error', reject);
+                req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+                req.end();
+            });
+            proxyConfig = { server: process.env.GOST_PROXY };
+            console.log('🛡️ 本地代理连通，使用 GOST 转发');
+        } catch {
+            console.log('⚠️ 本地代理不可达，降级为直连');
+        }
+    }
+
     console.log('🔧 启动浏览器...');
     const browser = await chromium.launch({
         headless: true,
-        proxy: process.env.GOST_PROXY ? { server: process.env.GOST_PROXY } : undefined,
+        proxy: proxyConfig,
     });
     const page = await browser.newPage();
     page.setDefaultTimeout(TIMEOUT);
